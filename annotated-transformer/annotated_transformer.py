@@ -38,7 +38,8 @@ class Generator(nn.Module):
         self.proj = nn.Linear(d_model, vocab)
 
     def forward(self, x):
-        return F.log_softmax(self.proj(x), dim = -1)
+        res = F.log_softmax(self.proj(x), dim = -1)
+        return res
 
 # The Transformer follows this overall architecture using stacked self-attention and point-wise,
 # fully connected layers for both the encoder and decoder, shown in the left and right halves of Figure 1, respectively.
@@ -49,6 +50,7 @@ class Generator(nn.Module):
 def clones(module, N):
     "Produce N identical layers."
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
+
 
 class Encoder(nn.Module):
     "Core Encoder is a stack of N layers"
@@ -83,6 +85,7 @@ class LayerNorm(nn.Module):
 # To facilitate these residual connections, all sub-layers in the model,
 # as well as the embedding layers, produce outputs of dimension `d_model` =512.
 
+
 class SublayerConnection(nn.Module):
     """
     A residual connection followed by a layer norm. Note for code simplicity the norm is first as opposed to last.
@@ -103,7 +106,7 @@ class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward"
     def __init__(self, size, self_attn, feed_forward, dropout):
         super(EncoderLayer, self).__init__()
-        self.self_attn = self.self_attn
+        self.self_attn = self_attn
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(size, dropout), 2)
         self.size = size
@@ -143,6 +146,7 @@ class DecoderLayer(nn.Module):
         self.sublayer = clones(SublayerConnection(size, dropout), 3)
 
     def forward(self, x, memory, src_mask, tgt_mask):
+        # Note: `memory` is the final embedding in the top of the encoder stack.
         "Follow Figure 1 for connections"
         m = memory
         x = self.sublayer[0](x, lambda x: self.self_attn(x,x,x,tgt_mask))
@@ -209,7 +213,7 @@ def attention(query, key, value, mask=None, dropout=None):
 # full dimensionality.
 
 class MultiHeadedAttention(nn.Module):
-    def __init(self, h, d_model, dropout=0.1):
+    def __init__(self, h, d_model, dropout=0.1):
         "Take in model size and number of heads"
         super(MultiHeadedAttention, self).__init__()
         assert d_model % h == 0
@@ -218,9 +222,14 @@ class MultiHeadedAttention(nn.Module):
         self.h = h
         self.linears = clones(nn.Linear(d_model, d_model), 4)
         self.attn = None
-        self.Dropout = nn.Dropout(p=dropout)
+        self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, query, key, value, mask=None):
+        """
+        query, key, value - shape (batch_size, sentence_len, d_model)
+        mask - shape (batch_size,            1, sentence_len) for encoder mask
+             - shape (batch_size, sentence_len, sentence_len) for decoder mask
+        """
         "Implements Figure 2"
         if mask is not None:
             # Same mask applied to all h heads
@@ -229,6 +238,8 @@ class MultiHeadedAttention(nn.Module):
 
         # 1) Do all the linear projections in batch from d_model => d x d_k
         # Note: view instantiates a tensor view
+        # Note (1): The below code essentially cuts up each l(x) into h groups of dim d_k each,
+        # And the attention is applied on the smaller groups, not on the original unsplit tensors.
         query, key, value = \
             [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1,2)
              for l,x in zip(self.linears, (query, key, value))]
@@ -237,6 +248,10 @@ class MultiHeadedAttention(nn.Module):
         x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout)
 
         # 3) "Concat" using a view and apply a final linear
+        # The below code essentially cuts up each l(x) into h groups of dim d_k each,
+        # And the attention is applied on the smaller groups, not on the original unsplit tensors.
+        # Note(2): After applying the attentions, the below code recomposes the embeddings of size
+        # d_model (pieces back together).
         # Note: Contiguous() forces data to be contiguous by copying data if necessary.
         # And as for contiguous(..), it’s typically called because most cases view(...)
         # would throw an error if contiguous(..) isn’t called before.
@@ -314,16 +329,18 @@ class Embeddings(nn.Module):
 class PositionalEncoding(nn.Module):
     "Implement the PE function."
     def __init__(self, d_model, dropout, max_len=5000):
+        super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
         # Compute the positional encodings once in log space
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2)) * - math.log(10000.0) / d_model
+        div_term = torch.exp(torch.arange(0., float(d_model), 2.) * (-1) * math.log(10000.0) / d_model)
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)
         # If you have parameters in your model, which should be saved and restored in the state_dict,
         # but not trained by the optimizer, you should register them as buffers using `self.register_buffer`
+        # self.pe = pe
         self.register_buffer('pe', pe)
 
     def forward(self, x):
@@ -352,12 +369,48 @@ def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0
     for p in model.parameters():
         if p.dim() > 1:
             nn.init.xavier_uniform(p)
+
     return model
 
-tmp_model = make_model(10,10,2)
+# tmp_model = make_model(10,10,2)
+
 
 # ======================================================================
 # ======================================================================
+# ======================================================================
+
+# ======================================================================
+# ======================================================================
+# ======================================================================
+
+# ======================================================================
+# ======================================================================
+# ======================================================================
+
+# ======================================================================
+# ======================================================================
+# ======================================================================
+
+
+# ======================================================================
+# ======================================================================
+# ======================================================================
+
+# ======================================================================
+# ======================================================================
+# ======================================================================
+
+# ======================================================================
+# ======================================================================
+# ======================================================================
+
+# ======================================================================
+# ======================================================================
+# ======================================================================
+
+
+# ======================================================================
+# ===========================Training ================================
 # ======================================================================
 
 # Training
@@ -477,7 +530,7 @@ def get_std_opt(model):
                    torch.optim.Adam(model.parameters(), lr = 0, betas=(0.9, 0.98), eps=1e-9))
 
 # Regularization
-# Label Smoothing
+## Label Smoothing
 # During training, we employed label smoothing of value $\epsilon_{ls} = 0.1.
 # This hurts perplexity, as the model learns to be more unsure, but improves accuracy and BLEU score.
 # We implement label smoothing using the KL div loss. Instead of using a one-hot target distribution,
@@ -501,8 +554,293 @@ class LabelSmoothing(nn.Module):
         true_dist.fill_(self.smoothing/ (self.size - 2))
         true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
         true_dist[:, self.padding_idx] = 0
-        mask = torch.nonzero(target.data == self.padding_idx)
+        mask = torch.nonzero(target.data == self.padding_idx, as_tuple=False)
         if mask.dim() > 0:
             true_dist.index_fill_(0, mask.squeeze(), 0.0)
         self.true_dist = true_dist
         return self.criterion(x, Variable(true_dist, requires_grad=False))
+
+
+# ======================================================================
+# ====================== Example 1: Copy ===============================
+# ======================================================================
+
+# A First Example - A Simple Copy Task
+## We can begin by trying out a simple copy-task. Given a random set of input symbols from a small vocabulary, the goal is to generate back those same symbols.
+
+# Synthetic Data
+def data_gen(V, batch, nbatches, device):
+  """
+  Generate random data for a src-tgt copy task.
+  Data generated is of batch_size `batch`, sequence_length 10 of random integers from 1 to `V`.
+  The data matrix is thus size (batch, 10). `V` represents the vocab size.
+  The first token is set to 1 ("the sentence start token").
+  Both the src and the tgt sequences are set to the same things, which means that the model learns to predict the
+  same sequence. (This is a commonly used first test-case).
+  """
+  for i in range(nbatches):
+      data = torch.from_numpy(np.random.randint(1, V, size=(batch, 10)))    # Matrix shpe (batch, 10) filled with randint between 1 and V-1
+      data[:, 0] = 1
+      src = Variable(data, requires_grad = False).to(device)
+      tgt = Variable(data, requires_grad = False).to(device)
+      yield Batch(src, tgt, 0)
+
+# Loss Computation
+class SimpleLossCompute:
+    "A simple loss compute and train function."
+    def __init__(self, generator, criterion, opt=None):
+        self.generator = generator
+        self.criterion = criterion
+        self.opt = opt
+
+    def __call__(self, x, y, norm):
+        x = self.generator(x)
+        loss = self.criterion(x.contiguous().view(-1, x.size(-1)),
+                              y.contiguous().view(-1)) / norm
+        loss.backward()
+        if self.opt is not None:
+            self.opt.step()
+            self.opt.optimizer.zero_grad()
+            # Note: Since the backward() function accumulates gradients, and you don’t want to mix up gradients between minibatches,
+            # you have to zero them out at the start of a new minibatch. This is exactly like how a general (additive) accumulator
+            # variable is initialized to 0 in code.
+        return loss.item() * norm
+
+# Greedy Decoding
+# Train the simple copy task
+def train_simple_copy():
+    """
+    `V` is vocab size for source and target.
+    We make a Transformer model with N=2 replications at each layer,
+    train the model using randomly generated data from `data_gen()`
+    and test the data on further random data from `data_gen()`.
+    Since `data_gen()` produces src and tgt sequences which are the same,
+    the model learns to predict the same sequence.
+
+    Explaination: `run_epoch` runs the epoch.
+
+    `SimpleLossCompute` is simply a customizeable function where we can control how the loss is computed.
+    It starts from the final embeddings in the model, uses the model generator to generate the next word
+    and computes the loss. In this case the loss function we use is LabelSmoothing + KLDivLoss (inside of LabelSmoothing class).
+    """
+    V = 11
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    criterion = LabelSmoothing(size=V, padding_idx=0, smoothing=0.0)
+    criterion = criterion.to(device)
+    model = make_model(V,V,N=2)
+    model = model.to(device)
+    model_opt = NoamOpt(model.src_embed[0].d_model, 1, 400,
+                        torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
+    for epoch in range(2):
+        # In pytorch, training and eval are performed my instantiating the model, calling `model.train()`
+        # Then calling `model.eval()`.
+        model.train()
+        run_epoch(data_gen(V, 30, 20, device), model,
+                  SimpleLossCompute(model.generator, criterion, model_opt))
+        model.eval()
+        print(run_epoch(data_gen(V, 30, 5, device), model, SimpleLossCompute(model.generator, criterion, None)))
+    return model
+
+# This code predicts a translation using greedy decoding for simplicity.
+def greedy_decode(model, src, src_mask, max_len, start_symbol):
+    memory = model.encode(src, src_mask)
+    ys = torch.ones(1,1).fill_(start_symbol).type_as(src.data)
+    for i in range(max_len-1):
+        out = model.decode(memory, src_mask, Variable(ys), Variable(subsequent_mask(ys.size(1)).type_as(src.data)))
+        prob = model.generator(out[:, -1])
+        _, next_word = torch.max(prob, dim = 1)
+        next_word = next_word.item()
+        # next_word = next_word.data[0]
+        ys = torch.cat([ys, torch.ones(1,1).type_as(src.data).fill_(next_word)], dim=1)
+    return ys
+
+def _run_greedy_decode(model):
+    model.eval()
+    src = Variable(torch.LongTensor([[1,2,3,4,5,6,7,8,9,10]]))
+    src_mask = Variable(torch.ones(1,1,10))
+    print(greedy_decode(model, src, src_mask, max_len=10, start_symbol=1))
+
+# ======================================================================
+# ==== Example 2: A Real World Example (German English Translation) ====
+# ======================================================================
+
+# Data Loading
+# We will load the dataset using torch text and spacy for tokenization.
+from torchtext import data, datasets
+
+def _load_data():
+    if True:
+        import spacy
+        spacy_de = spacy.load('de')
+        spacy_en = spacy.load('en')
+
+        def tokenize_de(text):
+            return [tok.text for tok in spacy_de.tokenizer(text)]
+
+        def tokenize_en(text):
+            return [tok.text for tok in spacy_en.tokenizer(text)]
+
+        BOS_WORD = '<s>'
+        EOS_WORD = '</s>'
+        BLANK_WORD = '<blank>'
+        SRC = data.Field(tokenize=tokenize_de, pad_token=BLANK_WORD)
+        TGT = data.Field(tokenize=tokenize_en, init_token=BOS_WORD, eos_token=EOS_WORD, pad_token=BLANK_WORD)
+        MAX_LEN = 100
+        train, val, test = datasets.IWSLT.splits(
+            exts=('.de', '.en'), fields=(SRC, TGT),
+            filter_pred=lambda x: len(vars(x)['src']) <= MAX_LEN and len(vars(x)['trg']) <= MAX_LEN
+        )
+        MIN_FREQ = 2
+        SRC.build_vocab(train.sqc, min_freq=MIN_FREQ)
+        TGT.build_vocab(train.trg, min_freq=MIN_FREQ)
+
+# Batching matters a ton for speed. We want to have very evenly divided batches, with absolutely minimal padding.
+# To do this we have to hack a bit around the default torchtext batching. This code patches their default batching
+# to make sure we search over enough sentences to find tight batches (all about the same length batched together).
+
+class MyIterator(data.Iterator):
+    def create_batches(self):
+        if self.train:
+            def pool(d, random_shuffler):
+                for p in data.batch(d, self.batch_size * 100):
+                    p_batch = data.batch(
+                        sorted(p, key=self.sort_key),
+                        self.batch_size, self.batch_size_fn
+                    )
+                    for b in random_shuffler(list(p_batch)):
+                        yield b
+            # Note: The `pool` distributes the tasks to the available processors using a FIFO scheduling.
+            self.batches = pool(self.data(), self.random_shuffler)
+        else:
+            self.batches = []
+            for b in data.batch(self.data(), self.batch_size, self.batch_size_fn):
+                self.batches.append(sorted(b, key=self.sort_key))
+
+def rebatch(pad_ix, batch, device):
+    "Fix order in torchtext to match ours"
+    src, trg = batch.src.transpose(0,1), batch.trg.transpose(0,1)
+    return Batch(src, trg, pad_ix)
+
+# Multi-GPU Training
+# Finally to really target fast training, we will use multi-gpu.
+# This code implements multi-gpu word generation. It is not specific to transformer so I won’t go into too much detail.
+# The idea is to split up word generation at training time into chunks to be processed in parallel across many different gpus.
+# We do this using pytorch parallel primitives:
+#  - replicate - split modules onto different gpus.
+#  - scatter - split batches onto different gpus
+#  - parallel_apply - apply module to batches on different gpus
+#  - gather - pull scattered data back onto one gpu.
+#  - nn.DataParallel - a special module wrapper that calls these all before evaluating.
+
+class MultiGPULossCompute:
+    "A multi-gpu loss compute and train function. Skip if not interested in multigpu."
+    def __init__(self, generator, criterion, devices, opt=None, chunk_size=5):
+        self.generator = generator
+        self.criterion = nn.parallel.replicate(criterion, devices=devices)
+        self.opt = opt
+        self.devices = devices
+        self.chunk_size = chunk_size
+
+    def __call__(self, out, targets, normalize):
+        total = 0.0
+        # Use nn.parallel.replicate, nn.parallel.scatter to distribute models and batches
+        generator = nn.parallel.replicate(self.generator, devices=self.devices)
+        out_scatter = nn.parallel.scatter(out, target_gpus=self.devices)
+        out_grad = [[] for _ in out_scatter]
+        targets = nn.parallel.scatter(targets, target_gpus=self.devices)
+
+        # Divide generating into chunks
+        chunk_size = self.chunk_size
+        for i in range(0, out_scatter[0].size(1), chunk_size):
+            # Predict distributions
+            out_column = [[Variable(o[:, i:i+chunk_size].data, requires_grad=self.opt is not None)]
+                          for o in out_scatter]
+            gen = nn.parallel.parallel_apply(generator, out_column)
+
+            #Compute loss
+            y = [(g.contiguous().view(-1, g.size(-1)),t[:, i:i+chunk_size].contiguous().view(-1))
+                 for g, t in zip(gen, targets)]
+            loss = nn.parallel.parallel_apply(self.criterion, y)
+
+            # SUm and normalize loss
+            l = nn.parallel.gather(loss, target_device = self.devices[0])
+            l = l.sum()[0] / normalize
+            total += l.item()
+            # total += l.data[0]
+
+            # Backprop loss to output of transformer
+            if self.opt is not None:
+                l.backward()
+                for j,l in enumerate(loss):
+                    out_grad[j].append(out_column[j][0].grad.data.clone())
+
+        #Backprop all loss through transformer
+        if self.opt is not None:
+            out_grad = [Variable(torch.cat(og, dim=1)) for og in out_grad]
+            o1 = out
+            o2 = nn.parallel.gather(out_grad, target_device=self.devices[0])
+            o1.backward(gradient=o2)
+            self.opt.step()
+            self.opt.optimizer.zero_grad()
+
+        return total * normalize
+
+def train_multigpu():
+    # Now we create our model, criterion, optimizer, data iterators, and paralelization
+    devices = [0,1,2,3]
+    if True:
+        pad_idx = TGT.vocab.stoi["<blank>"]
+        model = make_model(len(SRC.vocab), len(TGT.vocab), N=6)
+        model.cuda()
+        criterion = LabelSmoothing(size=len(TGT.vocab), padding_ids = pad_idx, smoothing=0.1)
+        criterion.cuda()
+        BATCH_SIZE=12000
+        train_iter = MyIterator(train, batch_size=BATCH_SIZE, device=0,
+                                repeat=False, sort_key=lambda x: (len(x.src), len(x.trg)),
+                                batch_size_fn=batch_size_fn(), train=False)
+        model_par = nn.DataParallel(model, device_ids=devices)
+
+    # Now we train the model. I will play with the warmup steps a bit, but everything else uses the default parameters.
+    # On an AWS p3.8xlarge with 4 Tesla V100s, this runs at ~27,000 tokens per second with a batch size of 12,000.
+
+    #!wget https://s3.amazonaws.com/opennmt-models/iwslt.pt
+
+    if False:
+        model_opt = NoamOpt(model.src_embed[0].d_model, 1, 2000, torch.optim.Adam(model.parameters(), lr=0, betas=(0.9,0.98), eps=1e-9))
+        for epoch in range(10):
+            model_par.train()
+            run_epoch((rebatch(pad_ix, b) for b in train_iter),
+                      model_par,
+                      MultiGPULossCompute(model.generator, criterion, devices=devices, opt=model_opt))
+            model_par.eval()
+            loss = run_epoch([rebatch(pax_idx, b) for b in valid_iter],
+                             model_par,
+                             MultiGPULossCompute(model.generator, criterion, devices=devices, opt=None))
+            print(loss)
+        else:
+            model = torch.load("iwslt.pt")
+
+    # Once trained we can decode the model to produce a set of translations. Here we simply translate the first sentence in the validation set.
+    # This dataset is pretty small so the translations with greedy search are reasonably accurate.
+
+    for i, batch in enumerate(valid_iter):
+        src = barch.src.transpose(0,1)[:1]
+        src_mask = (src != SRC.vocab.stoi["<blank>"]).unsqueeze(-2)
+        out = greedy_decode(model, src, src_mask, max_len=60, start_symbol=TGT.vocab.stoi["<s>"])
+        print("Translation:", end="\t")
+        for i in rnage(1, out.size(1)):
+            sym = TGT.vocab.itos[out[0,i]]
+            if sym == "</s>": break
+            print(sym, end=" ")
+        print()
+        print("Target:", end="\t")
+        for i in range(1, batch.trg.size(0)):
+            sym = TGT.vocab.itos[batch.trg.data[i,0]]
+            if sym == "</s>": break
+            print(sym, end = " ")
+        print()
+        break
+
+if __name__ == "__main__":
+    model = train_simple_copy()
+    _run_greedy_decode(model)
