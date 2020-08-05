@@ -368,7 +368,7 @@ def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0
     # Initialize parameters with Glorot / fan_avg.
     for p in model.parameters():
         if p.dim() > 1:
-            nn.init.xavier_uniform(p)
+            nn.init.xavier_uniform_(p)
 
     return model
 
@@ -566,7 +566,10 @@ class LabelSmoothing(nn.Module):
 # ======================================================================
 
 # A First Example - A Simple Copy Task
-## We can begin by trying out a simple copy-task. Given a random set of input symbols from a small vocabulary, the goal is to generate back those same symbols.
+## We can begin by trying out a simple copy-task.
+## Given a random set of input symbols from a small vocabulary, the goal is to generate back those same symbols.
+## The transformer model is not good at this task if the input is random characters.
+## This is because the decoder is masked during training,
 
 # Synthetic Data
 def data_gen(V, batch, nbatches, device):
@@ -608,7 +611,7 @@ class SimpleLossCompute:
 
 # Greedy Decoding
 # Train the simple copy task
-def train_simple_copy():
+def train_simple_copy(device='cpu'):
     """
     `V` is vocab size for source and target.
     We make a Transformer model with N=2 replications at each layer,
@@ -624,14 +627,13 @@ def train_simple_copy():
     and computes the loss. In this case the loss function we use is LabelSmoothing + KLDivLoss (inside of LabelSmoothing class).
     """
     V = 11
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     criterion = LabelSmoothing(size=V, padding_idx=0, smoothing=0.0)
     criterion = criterion.to(device)
     model = make_model(V,V,N=2)
     model = model.to(device)
     model_opt = NoamOpt(model.src_embed[0].d_model, 1, 400,
                         torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
-    for epoch in range(2):
+    for epoch in range(10):
         # In pytorch, training and eval are performed my instantiating the model, calling `model.train()`
         # Then calling `model.eval()`.
         model.train()
@@ -642,23 +644,27 @@ def train_simple_copy():
     return model
 
 # This code predicts a translation using greedy decoding for simplicity.
-def greedy_decode(model, src, src_mask, max_len, start_symbol):
+def greedy_decode(model, src, src_mask, max_len, start_symbol, device):
     memory = model.encode(src, src_mask)
     ys = torch.ones(1,1).fill_(start_symbol).type_as(src.data)
     for i in range(max_len-1):
-        out = model.decode(memory, src_mask, Variable(ys), Variable(subsequent_mask(ys.size(1)).type_as(src.data)))
+        out = model.decode(memory, src_mask, Variable(ys).to(device), Variable(subsequent_mask(ys.size(1)).type_as(src.data)).to(device))
         prob = model.generator(out[:, -1])
         _, next_word = torch.max(prob, dim = 1)
         next_word = next_word.item()
-        # next_word = next_word.data[0]
         ys = torch.cat([ys, torch.ones(1,1).type_as(src.data).fill_(next_word)], dim=1)
     return ys
 
-def _run_greedy_decode(model):
+def _run_greedy_train_decode():
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = train_simple_copy(device)
     model.eval()
-    src = Variable(torch.LongTensor([[1,2,3,4,5,6,7,8,9,10]]))
-    src_mask = Variable(torch.ones(1,1,10))
-    print(greedy_decode(model, src, src_mask, max_len=10, start_symbol=1))
+    src = Variable(torch.LongTensor([[1,2,3,4,5,6,7,8,9,10]])).to(device)
+    src_mask = Variable(torch.ones(1,1,10)).to(device)
+    trans = greedy_decode(model, src, src_mask, max_len=10, start_symbol=1, device=device)
+    src = src.cpu().numpy().squeeze(0)
+    trans = trans.cpu().numpy().squeeze(0)
+    attention_visualization(model, trans, src)
 
 # ======================================================================
 # ==== Example 2: A Real World Example (German English Translation) ====
@@ -841,6 +847,40 @@ def train_multigpu():
         print()
         break
 
+# ======================================================================
+# ================ Appendix 1: Attention Visualization =================
+# ======================================================================
+
+def attention_visualization(model, trans, sent):
+    N = len(model.encoder.layers)
+    tgt_sent = trans
+    def draw(data, x, y, ax):
+        seaborn.heatmap(data.cpu(),
+                        xticklabels=x, square=True, yticklabels=y, vmin=0.0, vmax=1.0,
+                        cbar=False, ax=ax)
+
+
+    for layer in range(0, N):
+        fig, axs = plt.subplots(1, 4, figsize=(20, 10))
+        print("Encoder Layer", layer + 1)
+        for h in range(4):
+            draw(model.encoder.layers[layer].self_attn.attn[0, h].data,
+                 sent, sent if h == 0 else [], ax=axs[h])
+        plt.show()
+
+    for layer in range(0, N):
+        fig, axs = plt.subplots(1, 4, figsize=(20, 10))
+        print("Decoder Self Layer", layer + 1)
+        for h in range(4):
+            draw(model.decoder.layers[layer].self_attn.attn[0, h].data[:len(tgt_sent), :len(tgt_sent)],
+                 tgt_sent, tgt_sent if h == 0 else [], ax=axs[h])
+        plt.show()
+        print("Decoder Src Layer", layer + 1)
+        fig, axs = plt.subplots(1, 4, figsize=(20, 10))
+        for h in range(4):
+            draw(model.decoder.layers[layer].self_attn.attn[0, h].data[:len(tgt_sent), :len(sent)],
+                 sent, tgt_sent if h == 0 else [], ax=axs[h])
+        plt.show()
+
 if __name__ == "__main__":
-    model = train_simple_copy()
-    _run_greedy_decode(model)
+    _run_greedy_train_decode()
