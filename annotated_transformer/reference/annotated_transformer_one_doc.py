@@ -82,7 +82,7 @@ class LayerNorm(nn.Module):
 # where `Sublayer(x)` is the function implemented by the sub-layer itself.
 # We apply dropout to the output of each sub-layer, before it is added to
 # the sub-layer input and normalized.
-# To facilitate these residual connections, all sub-layers in the model,
+# To facilitate these residual connections, all sub-layers in the transformer,
 # as well as the embedding layers, produce outputs of dimension `d_model` =512.
 
 
@@ -202,19 +202,19 @@ def attention(query, key, value, mask=None, dropout=None):
 # $q \cdot k = \sum_{i=1}^{d_k}q_i k_i$ has mean 0 and variance $d_k$). To conteract this effect, we scale the dot products by $\frac{1}{\sqrt{d_k}$
 
 # Multi-Head Attention
-# Multi-head attention allows the model to jointly attend to information from different representation
+# Multi-head attention allows the transformer to jointly attend to information from different representation
 # subspaces at different positions. With a single attention head, averaging inhibits this.
 # $\text{MultiHead}(Q,K,V) = Concat(head_1, ..., head_h) W^O$, where $head_i = Attention()QW^Q_i, KW^K_i, VW^V_i$
 
-# Where the projections are the parameter matrices $W_^Q_i \in R^{d_{model} \times d_k}$,
-# $W_i^K \in R^{d_{model} \times d_k}$, $W_i^V \in R^{d_{model} \times d_v}$, and $W^O \in R^{hd_v \times d_{model}}$.
+# Where the projections are the parameter matrices $W_^Q_i \in R^{d_{transformer} \times d_k}$,
+# $W_i^K \in R^{d_{transformer} \times d_k}$, $W_i^V \in R^{d_{transformer} \times d_v}$, and $W^O \in R^{hd_v \times d_{transformer}}$.
 # In this work we employ $h=8$ parallel attention layers or heads. For each of these we use $d_k = d_v = d_model / h = 64$.
 # Due to the reduced dimensionality of each head, the total computational cost is similar to that of single-headed attention with
 # full dimensionality.
 
 class MultiHeadedAttention(nn.Module):
     def __init__(self, h, d_model, dropout=0.1):
-        "Take in model size and number of heads"
+        "Take in transformer size and number of heads"
         super(MultiHeadedAttention, self).__init__()
         assert d_model % h == 0
         # We assume here that d_v always equals d_k
@@ -299,8 +299,8 @@ class PositionwiseFeedForward(nn.Module):
 # Embeddings and Softmax
 # Similarly to other sequence transduction models, we use learned embeddings to convert the input tokens and output tokens
 # to vectors of dimension $d_model$. We also use the usual learned linear transformation and softmax function to convert the
-# decoder output to predicted next-token probabilities. In out model, we share the same weight matrix between two embedding layers
-# and the pre-softmax linear transformaiton. In the embedding layers, we multiply those weights by $\sqrt{d_{model}}$.
+# decoder output to predicted next-token probabilities. In out transformer, we share the same weight matrix between two embedding layers
+# and the pre-softmax linear transformaiton. In the embedding layers, we multiply those weights by $\sqrt{d_{transformer}}$.
 
 class Embeddings(nn.Module):
     def __init__(self, d_model, vocab):
@@ -312,19 +312,19 @@ class Embeddings(nn.Module):
         return self.lut(x) * math.sqrt(self.d_model)
 
 # Positional Embedding
-# Since our model contains no recurrence and no convolution, in order for the model to make use of the order of the sequence,
+# Since our transformer contains no recurrence and no convolution, in order for the transformer to make use of the order of the sequence,
 # We just inject some information about the relative or absolute position of the tokens in teh sequence. To this end, we
 # add "positional embeddings" to the input embeddings at the bottoms of the encoder and decoder stacks.
-# The positional encodings have the same dimension $d_{model}$ as the embeddings, so the two can be summed. There are many choices of
+# The positional encodings have the same dimension $d_{transformer}$ as the embeddings, so the two can be summed. There are many choices of
 # positional encodings, learned and fixed.
 #
 # In this work, we use sine and cosing functions of different frequencies:
-# $PE_{(pos, 2i)} = \sin(pos/10000^{2i/d_{model}})$ and $PE_{(pos, 2i+1)} = \cos(pos/10000^{2i/d_{model}})$, where $pos$ is the position
+# $PE_{(pos, 2i)} = \sin(pos/10000^{2i/d_{transformer}})$ and $PE_{(pos, 2i+1)} = \cos(pos/10000^{2i/d_{transformer}})$, where $pos$ is the position
 # and i is the dimension. That is, each dimension of the position encoding corresponds to a sinusoid. The wavelengths form a geometric progression
-# from $2 \pi$ to $10000 * 2 \pi$. We chose this function because we hypothesized it would allow the model to easily learn to attend
+# from $2 \pi$ to $10000 * 2 \pi$. We chose this function because we hypothesized it would allow the transformer to easily learn to attend
 # by relative positions, since for any fixed offset $k$, $PE_{pos + k}$ can be represented as a linear function of $PE_{pos}$.
 # In addition, we apply dropout to the sums of the embeddings and the positional encodings in both the encoder and decoder stacks.
-# For teh base model, we use a rate of $P_drop = 0.1$.
+# For teh base transformer, we use a rate of $P_drop = 0.1$.
 
 class PositionalEncoding(nn.Module):
     "Implement the PE function."
@@ -338,7 +338,7 @@ class PositionalEncoding(nn.Module):
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)
-        # If you have parameters in your model, which should be saved and restored in the state_dict,
+        # If you have parameters in your transformer, which should be saved and restored in the state_dict,
         # but not trained by the optimizer, you should register them as buffers using `self.register_buffer`
         # self.pe = pe
         self.register_buffer('pe', pe)
@@ -348,12 +348,12 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 # Full Model
-# Here we define a function that takes in hyperparameters and produces a full model.
+# Here we define a function that takes in hyperparameters and produces a full transformer.
 
 def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0.1):
-    "Helper: Construct a model from hyperparameters"
+    "Helper: Construct a transformer from hyperparameters"
     c = copy.deepcopy
-    attn = MultiHeadedAttention(h, d_model)
+    attn = MultiHeadedAttention(h, d_model, dropout)
     ff = PositionwiseFeedForward(d_model, d_ff, dropout)
     position = PositionalEncoding(d_model, dropout)
     model = EncoderDecoder(
@@ -416,9 +416,42 @@ def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0
 # Training
 ## This section describes the training regime for our models.
 ## We stop for a quick interlude to introduce some of the tools needed to train a
-## standard encoder decoder model. First we define a batch object that holds the
+## standard encoder decoder transformer. First we define a batch object that holds the
 ## src and target sentences for training, as well as constructing the masks.
 
+def loss_backprop(generator, criterion, out, targets, normalize):
+    """
+    Memory optmization. Compute each timestep separately and sum grads.
+    """
+    assert out.size(1) == targets.size(1)
+    total = 0.0
+    out_grad = []
+    for i in range(out.size(1)):
+        out_column = Variable(out[:, i].data, requires_grad=True)
+        gen = generator(out_column)
+        loss = criterion(gen, targets[:, i]) / normalize
+        total += loss.item()
+        loss.backward()
+        out_grad.append(out_column.grad.data.clone())
+    out_grad = torch.stack(out_grad, dim=1)
+    out.backward(gradient=out_grad)
+    return total
+
+# Training Loop
+# def run_epoch(data_iter, transformer, loss_compute):
+def train_epoch(data_iter, model, criterion, model_opt, transpose=False):
+    "Standard Training and Logging Function"
+    model.train()
+    for i, batch in enumerate(data_iter):
+        out = model.forward(batch.src, batch.trg, batch.src_mask, batch.trg_mask)
+        loss = loss_backprop(model.generator, criterion, out, batch.trg, batch.ntokens)
+        model_opt.step()
+        model_opt.optimizer.zero_grad()
+        if i % 10 == 1:
+            print(i, loss, model_opt._rate)
+
+
+#---
 # Batches and Masking
 class Batch:
     "Object for holding a batch of data with mask during training"
@@ -492,11 +525,11 @@ def batch_size_fn(new, count, sofar):
 
 # Optimizer
 # We used the Adam optimizer (cite) with $\beta_1 = 0.9, \beta2 = 0.98, \epsilon=10^{-9}$. We varied the
-# learning rate over the course of training, according to the formula $lrate = d_{model}^{-0.5} \cdot \min(step_num^{-0.5}, step_num \cdot warmup_steps^{-1.5}$
+# learning rate over the course of training, according to the formula $lrate = d_{transformer}^{-0.5} \cdot \min(step_num^{-0.5}, step_num \cdot warmup_steps^{-1.5}$
 # This corresponds to increasing the learning rate linearly for the first warmup_steps training steps, and decreasing it thereafter
 # proportionally to the inverse square root of the step number. We used warmup_steps=4000$.
 
-# Note: This part is very important. Need to train with this setup of the model.
+# Note: This part is very important. Need to train with this setup of the transformer.
 
 class NoamOpt:
     "Optim wrapper that implements rate"
@@ -532,7 +565,7 @@ def get_std_opt(model):
 # Regularization
 ## Label Smoothing
 # During training, we employed label smoothing of value $\epsilon_{ls} = 0.1.
-# This hurts perplexity, as the model learns to be more unsure, but improves accuracy and BLEU score.
+# This hurts perplexity, as the transformer learns to be more unsure, but improves accuracy and BLEU score.
 # We implement label smoothing using the KL div loss. Instead of using a one-hot target distribution,
 # we create a distribution that has confidence of the correct word and the rest of the smoothing mass
 # distributed throughout the vocabulary.
@@ -568,7 +601,7 @@ class LabelSmoothing(nn.Module):
 # A First Example - A Simple Copy Task
 ## We can begin by trying out a simple copy-task.
 ## Given a random set of input symbols from a small vocabulary, the goal is to generate back those same symbols.
-## The transformer model is not good at this task if the input is random characters.
+## The transformer transformer is not good at this task if the input is random characters.
 ## This is because the decoder is masked during training,
 
 # Synthetic Data
@@ -578,7 +611,7 @@ def data_gen(V, batch, nbatches, device):
   Data generated is of batch_size `batch`, sequence_length 10 of random integers from 1 to `V`.
   The data matrix is thus size (batch, 10). `V` represents the vocab size.
   The first token is set to 1 ("the sentence start token").
-  Both the src and the tgt sequences are set to the same things, which means that the model learns to predict the
+  Both the src and the tgt sequences are set to the same things, which means that the transformer learns to predict the
   same sequence. (This is a commonly used first test-case).
   """
   for i in range(nbatches):
@@ -614,16 +647,16 @@ class SimpleLossCompute:
 def train_simple_copy(device='cpu'):
     """
     `V` is vocab size for source and target.
-    We make a Transformer model with N=2 replications at each layer,
-    train the model using randomly generated data from `data_gen()`
+    We make a Transformer transformer with N=2 replications at each layer,
+    train the transformer using randomly generated data from `data_gen()`
     and test the data on further random data from `data_gen()`.
     Since `data_gen()` produces src and tgt sequences which are the same,
-    the model learns to predict the same sequence.
+    the transformer learns to predict the same sequence.
 
     Explaination: `run_epoch` runs the epoch.
 
     `SimpleLossCompute` is simply a customizeable function where we can control how the loss is computed.
-    It starts from the final embeddings in the model, uses the model generator to generate the next word
+    It starts from the final embeddings in the transformer, uses the transformer generator to generate the next word
     and computes the loss. In this case the loss function we use is LabelSmoothing + KLDivLoss (inside of LabelSmoothing class).
     """
     V = 11
@@ -633,14 +666,17 @@ def train_simple_copy(device='cpu'):
     model = model.to(device)
     model_opt = NoamOpt(model.src_embed[0].d_model, 1, 400,
                         torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
-    for epoch in range(10):
-        # In pytorch, training and eval are performed my instantiating the model, calling `model.train()`
-        # Then calling `model.eval()`.
+    for epoch in range(50):
+        # In pytorch, training and eval are performed my instantiating the transformer, calling `transformer.train()`
+        # Then calling `transformer.eval()`.
         model.train()
+        # train_epoch(data_gen(V, 30, 20, device), transformer, criterion, model_opt)
         run_epoch(data_gen(V, 30, 20, device), model,
-                  SimpleLossCompute(model.generator, criterion, model_opt))
+                      SimpleLossCompute(model.generator, criterion, model_opt))
         model.eval()
-        print(run_epoch(data_gen(V, 30, 5, device), model, SimpleLossCompute(model.generator, criterion, None)))
+        # train_epoch(data_gen(V, 30, 5, device), transformer, criterion, model_opt)
+        print(run_epoch(data_gen(V, 30, 5, device), model,
+                        SimpleLossCompute(model.generator, criterion, None)))
     return model
 
 # This code predicts a translation using greedy decoding for simplicity.
@@ -792,7 +828,7 @@ class MultiGPULossCompute:
         return total * normalize
 
 def train_multigpu():
-    # Now we create our model, criterion, optimizer, data iterators, and paralelization
+    # Now we create our transformer, criterion, optimizer, data iterators, and paralelization
     devices = [0,1,2,3]
     if True:
         pad_idx = TGT.vocab.stoi["<blank>"]
@@ -806,7 +842,7 @@ def train_multigpu():
                                 batch_size_fn=batch_size_fn(), train=False)
         model_par = nn.DataParallel(model, device_ids=devices)
 
-    # Now we train the model. I will play with the warmup steps a bit, but everything else uses the default parameters.
+    # Now we train the transformer. I will play with the warmup steps a bit, but everything else uses the default parameters.
     # On an AWS p3.8xlarge with 4 Tesla V100s, this runs at ~27,000 tokens per second with a batch size of 12,000.
 
     #!wget https://s3.amazonaws.com/opennmt-models/iwslt.pt
@@ -826,7 +862,7 @@ def train_multigpu():
         else:
             model = torch.load("iwslt.pt")
 
-    # Once trained we can decode the model to produce a set of translations. Here we simply translate the first sentence in the validation set.
+    # Once trained we can decode the transformer to produce a set of translations. Here we simply translate the first sentence in the validation set.
     # This dataset is pretty small so the translations with greedy search are reasonably accurate.
 
     for i, batch in enumerate(valid_iter):
